@@ -74,6 +74,16 @@
   .hint{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%) rotate(-2deg);text-align:center;color:var(--graphite-soft);font-size:24px;pointer-events:none;opacity:.9;max-width:80%;}
   .hint b{color:var(--graphite);}
 
+  /* constraints HUD */
+  .constraints{position:absolute;left:50%;top:auto;bottom:auto;transform:translateX(-50%);top:68px;display:flex;gap:16px;pointer-events:none;font-size:18px;color:var(--graphite-soft);}
+  .constraints span{display:flex;align-items:center;gap:4px;}
+  .constraints .warn{color:var(--red);font-weight:700;}
+
+  /* fail overlay */
+  #fail{position:absolute;inset:0;display:none;align-items:center;justify-content:center;flex-direction:column;gap:14px;background:rgba(243,236,219,.88);backdrop-filter:blur(2px);text-align:center;padding:24px;}
+  #fail h1{font-family:'Caveat';font-weight:700;font-size:52px;margin:0;color:var(--red);transform:rotate(-2deg);}
+  #fail p{font-size:22px;margin:0;color:var(--graphite-soft);}
+
   /* win overlay */
   #win{position:absolute;inset:0;display:none;align-items:center;justify-content:center;flex-direction:column;gap:14px;background:rgba(243,236,219,.82);backdrop-filter:blur(2px);text-align:center;padding:24px;}
   #win h1{font-family:'Caveat';font-weight:700;font-size:64px;margin:0;color:var(--graphite);transform:rotate(-2deg);}
@@ -92,9 +102,14 @@
       <div class="meter"><div class="meter-fill" id="mfill"></div></div>
     </div>
     <div style="text-align:right">
-      <div class="lvl" id="lvlLabel">LV 1 / 15</div>
+      <div class="lvl" id="lvlLabel">LV 1 / 50</div>
       <button class="btn" id="levelUp">LEVEL&nbsp;UP ↑<small>next stage</small></button>
     </div>
+  </div>
+
+  <div class="constraints" id="constraints" style="display:none">
+    <span id="timerDisp">⏱ 30s</span>
+    <span id="volumeDisp">💧 0/40</span>
   </div>
 
   <div class="hint" id="hint">Draw a <b>pencil slide</b> from the pipe to the cup.<br>Guide every drop home. 💧</div>
@@ -110,8 +125,14 @@
     </div>
   </div>
 
+  <div id="fail">
+    <h1 id="failTitle">out of time!</h1>
+    <p id="failSub">The cup needed more drops.</p>
+    <button class="btn" id="retry" style="font-size:28px">try again ↺</button>
+  </div>
+
   <div id="win">
-    <h1 id="winTitle">🎉 All 15 levels!</h1>
+    <h1 id="winTitle">🎉 All 50 levels!</h1>
     <p id="winSub">You guided every last drop home.</p>
     <button class="btn" id="playAgain" style="font-size:30px">play again ↺</button>
   </div>
@@ -125,22 +146,73 @@
 
   // ---------- LEVELS (positions as fractions of width/height) ----------
   // pipe = drop source, cup = target. ink = max draw length factor of min(W,H).
+  // From level 16+: timeLimit (seconds), volumeLimit (max total drops emitted)
   const LEVELS = [
-    {pipe:{fx:.30,fy:.26}, cup:{fx:.62,fy:.80}, target:14, ink:1.4,  obstacles:[]},
-    {pipe:{fx:.24,fy:.24}, cup:{fx:.74,fy:.82}, target:16, ink:1.6,  obstacles:[]},
-    {pipe:{fx:.72,fy:.24}, cup:{fx:.26,fy:.80}, target:16, ink:1.7,  obstacles:[]},
-    {pipe:{fx:.50,fy:.22}, cup:{fx:.20,fy:.78}, target:18, ink:1.7,  obstacles:[{fx:.42,fy:.50,fw:.16,fh:.05}]},
-    {pipe:{fx:.22,fy:.22}, cup:{fx:.80,fy:.80}, target:18, ink:1.6,  obstacles:[{fx:.46,fy:.46,fw:.10,fh:.18}]},
-    {pipe:{fx:.30,fy:.20}, cup:{fx:.66,fy:.84}, target:20, ink:1.5,  obstacles:[{fx:.30,fy:.50,fw:.20,fh:.045},{fx:.56,fy:.64,fw:.20,fh:.045}]},
-    {pipe:{fx:.78,fy:.22}, cup:{fx:.22,fy:.82}, target:20, ink:1.6,  obstacles:[{fx:.40,fy:.40,fw:.30,fh:.045}]},
-    {pipe:{fx:.50,fy:.18}, cup:{fx:.50,fy:.84}, target:22, ink:1.5,  obstacles:[{fx:.44,fy:.42,fw:.12,fh:.30}]},
-    {pipe:{fx:.20,fy:.20}, cup:{fx:.80,fy:.78}, target:22, ink:1.4,  obstacles:[{fx:.30,fy:.44,fw:.16,fh:.045},{fx:.56,fy:.60,fw:.16,fh:.045}]},
-    {pipe:{fx:.74,fy:.20}, cup:{fx:.26,fy:.84}, target:22, ink:1.5,  obstacles:[{fx:.40,fy:.36,fw:.10,fh:.20},{fx:.52,fy:.58,fw:.10,fh:.20}]},
-    {pipe:{fx:.32,fy:.18}, cup:{fx:.70,fy:.86}, target:24, ink:1.4,  obstacles:[{fx:.34,fy:.42,fw:.22,fh:.04},{fx:.50,fy:.62,fw:.22,fh:.04}]},
+    // 1-15: original levels, no time/volume limit
+    {pipe:{fx:.30,fy:.26}, cup:{fx:.62,fy:.80}, target:14, ink:1.4, obstacles:[]},
+    {pipe:{fx:.24,fy:.24}, cup:{fx:.74,fy:.82}, target:16, ink:1.6, obstacles:[]},
+    {pipe:{fx:.72,fy:.24}, cup:{fx:.26,fy:.80}, target:16, ink:1.7, obstacles:[]},
+    {pipe:{fx:.50,fy:.22}, cup:{fx:.20,fy:.78}, target:18, ink:1.7, obstacles:[{fx:.42,fy:.50,fw:.16,fh:.05}]},
+    {pipe:{fx:.22,fy:.22}, cup:{fx:.80,fy:.80}, target:18, ink:1.6, obstacles:[{fx:.46,fy:.46,fw:.10,fh:.18}]},
+    {pipe:{fx:.30,fy:.20}, cup:{fx:.66,fy:.84}, target:20, ink:1.5, obstacles:[{fx:.30,fy:.50,fw:.20,fh:.045},{fx:.56,fy:.64,fw:.20,fh:.045}]},
+    {pipe:{fx:.78,fy:.22}, cup:{fx:.22,fy:.82}, target:20, ink:1.6, obstacles:[{fx:.40,fy:.40,fw:.30,fh:.045}]},
+    {pipe:{fx:.50,fy:.18}, cup:{fx:.50,fy:.84}, target:22, ink:1.5, obstacles:[{fx:.44,fy:.42,fw:.12,fh:.30}]},
+    {pipe:{fx:.20,fy:.20}, cup:{fx:.80,fy:.78}, target:22, ink:1.4, obstacles:[{fx:.30,fy:.44,fw:.16,fh:.045},{fx:.56,fy:.60,fw:.16,fh:.045}]},
+    {pipe:{fx:.74,fy:.20}, cup:{fx:.26,fy:.84}, target:22, ink:1.5, obstacles:[{fx:.40,fy:.36,fw:.10,fh:.20},{fx:.52,fy:.58,fw:.10,fh:.20}]},
+    {pipe:{fx:.32,fy:.18}, cup:{fx:.70,fy:.86}, target:24, ink:1.4, obstacles:[{fx:.34,fy:.42,fw:.22,fh:.04},{fx:.50,fy:.62,fw:.22,fh:.04}]},
     {pipe:{fx:.18,fy:.20}, cup:{fx:.84,fy:.80}, target:24, ink:1.35, obstacles:[{fx:.40,fy:.30,fw:.10,fh:.34}]},
-    {pipe:{fx:.50,fy:.16}, cup:{fx:.18,fy:.84}, target:26, ink:1.4,  obstacles:[{fx:.36,fy:.40,fw:.30,fh:.04},{fx:.20,fy:.60,fw:.28,fh:.04}]},
+    {pipe:{fx:.50,fy:.16}, cup:{fx:.18,fy:.84}, target:26, ink:1.4, obstacles:[{fx:.36,fy:.40,fw:.30,fh:.04},{fx:.20,fy:.60,fw:.28,fh:.04}]},
     {pipe:{fx:.80,fy:.18}, cup:{fx:.20,fy:.86}, target:26, ink:1.35, obstacles:[{fx:.46,fy:.30,fw:.09,fh:.24},{fx:.30,fy:.60,fw:.20,fh:.04}]},
-    {pipe:{fx:.50,fy:.15}, cup:{fx:.50,fy:.88}, target:30, ink:1.3,  obstacles:[{fx:.30,fy:.38,fw:.16,fh:.04},{fx:.54,fy:.38,fw:.16,fh:.04},{fx:.42,fy:.62,fw:.16,fh:.04}]},
+    {pipe:{fx:.50,fy:.15}, cup:{fx:.50,fy:.88}, target:30, ink:1.3, obstacles:[{fx:.30,fy:.38,fw:.16,fh:.04},{fx:.54,fy:.38,fw:.16,fh:.04},{fx:.42,fy:.62,fw:.16,fh:.04}]},
+
+    // 16-20: introduce time + volume limits (generous)
+    {pipe:{fx:.26,fy:.22}, cup:{fx:.74,fy:.82}, target:20, ink:1.4, timeLimit:35, volumeLimit:50, obstacles:[{fx:.40,fy:.44,fw:.22,fh:.04}]},
+    {pipe:{fx:.74,fy:.20}, cup:{fx:.30,fy:.84}, target:22, ink:1.4, timeLimit:35, volumeLimit:52, obstacles:[{fx:.50,fy:.38,fw:.04,fh:.24}]},
+    {pipe:{fx:.50,fy:.18}, cup:{fx:.24,fy:.82}, target:22, ink:1.35, timeLimit:33, volumeLimit:50, obstacles:[{fx:.36,fy:.42,fw:.18,fh:.04},{fx:.28,fy:.62,fw:.18,fh:.04}]},
+    {pipe:{fx:.20,fy:.20}, cup:{fx:.78,fy:.84}, target:24, ink:1.35, timeLimit:33, volumeLimit:52, obstacles:[{fx:.38,fy:.36,fw:.08,fh:.22},{fx:.56,fy:.56,fw:.18,fh:.04}]},
+    {pipe:{fx:.80,fy:.18}, cup:{fx:.22,fy:.86}, target:24, ink:1.3, timeLimit:32, volumeLimit:50, obstacles:[{fx:.50,fy:.32,fw:.20,fh:.04},{fx:.34,fy:.56,fw:.20,fh:.04}]},
+
+    // 21-25: tighter constraints
+    {pipe:{fx:.50,fy:.16}, cup:{fx:.76,fy:.86}, target:24, ink:1.25, timeLimit:30, volumeLimit:48, obstacles:[{fx:.44,fy:.36,fw:.14,fh:.04},{fx:.58,fy:.56,fw:.14,fh:.04},{fx:.64,fy:.72,fw:.10,fh:.04}]},
+    {pipe:{fx:.24,fy:.18}, cup:{fx:.76,fy:.84}, target:26, ink:1.3, timeLimit:30, volumeLimit:50, obstacles:[{fx:.42,fy:.34,fw:.06,fh:.28}]},
+    {pipe:{fx:.76,fy:.18}, cup:{fx:.24,fy:.86}, target:26, ink:1.25, timeLimit:28, volumeLimit:48, obstacles:[{fx:.54,fy:.36,fw:.06,fh:.22},{fx:.36,fy:.58,fw:.06,fh:.22}]},
+    {pipe:{fx:.50,fy:.16}, cup:{fx:.50,fy:.88}, target:28, ink:1.25, timeLimit:28, volumeLimit:52, obstacles:[{fx:.30,fy:.38,fw:.14,fh:.04},{fx:.56,fy:.38,fw:.14,fh:.04},{fx:.43,fy:.58,fw:.14,fh:.04}]},
+    {pipe:{fx:.20,fy:.18}, cup:{fx:.80,fy:.86}, target:28, ink:1.2, timeLimit:28, volumeLimit:50, obstacles:[{fx:.36,fy:.32,fw:.20,fh:.04},{fx:.50,fy:.52,fw:.20,fh:.04},{fx:.64,fy:.70,fw:.14,fh:.04}]},
+
+    // 26-30: more obstacles, tighter time
+    {pipe:{fx:.78,fy:.16}, cup:{fx:.22,fy:.86}, target:26, ink:1.2, timeLimit:26, volumeLimit:46, obstacles:[{fx:.56,fy:.30,fw:.16,fh:.04},{fx:.38,fy:.48,fw:.16,fh:.04},{fx:.24,fy:.66,fw:.16,fh:.04}]},
+    {pipe:{fx:.30,fy:.18}, cup:{fx:.70,fy:.86}, target:28, ink:1.2, timeLimit:26, volumeLimit:48, obstacles:[{fx:.40,fy:.34,fw:.08,fh:.20},{fx:.56,fy:.54,fw:.08,fh:.20}]},
+    {pipe:{fx:.50,fy:.14}, cup:{fx:.20,fy:.86}, target:28, ink:1.15, timeLimit:25, volumeLimit:46, obstacles:[{fx:.42,fy:.32,fw:.16,fh:.04},{fx:.28,fy:.50,fw:.16,fh:.04},{fx:.22,fy:.68,fw:.12,fh:.04}]},
+    {pipe:{fx:.22,fy:.16}, cup:{fx:.78,fy:.88}, target:30, ink:1.2, timeLimit:25, volumeLimit:50, obstacles:[{fx:.34,fy:.30,fw:.06,fh:.26},{fx:.52,fy:.50,fw:.06,fh:.26}]},
+    {pipe:{fx:.78,fy:.16}, cup:{fx:.50,fy:.88}, target:30, ink:1.15, timeLimit:24, volumeLimit:48, obstacles:[{fx:.60,fy:.32,fw:.14,fh:.04},{fx:.46,fy:.50,fw:.14,fh:.04},{fx:.52,fy:.68,fw:.10,fh:.04}]},
+
+    // 31-35: complex mazes
+    {pipe:{fx:.50,fy:.14}, cup:{fx:.50,fy:.88}, target:28, ink:1.1, timeLimit:24, volumeLimit:44, obstacles:[{fx:.30,fy:.30,fw:.16,fh:.04},{fx:.54,fy:.30,fw:.16,fh:.04},{fx:.42,fy:.48,fw:.16,fh:.04},{fx:.42,fy:.66,fw:.16,fh:.04}]},
+    {pipe:{fx:.20,fy:.16}, cup:{fx:.80,fy:.88}, target:30, ink:1.15, timeLimit:24, volumeLimit:48, obstacles:[{fx:.32,fy:.28,fw:.04,fh:.20},{fx:.48,fy:.44,fw:.04,fh:.20},{fx:.64,fy:.60,fw:.04,fh:.20}]},
+    {pipe:{fx:.80,fy:.14}, cup:{fx:.20,fy:.88}, target:30, ink:1.1, timeLimit:23, volumeLimit:46, obstacles:[{fx:.62,fy:.28,fw:.14,fh:.04},{fx:.44,fy:.44,fw:.14,fh:.04},{fx:.26,fy:.60,fw:.14,fh:.04},{fx:.26,fy:.74,fw:.10,fh:.04}]},
+    {pipe:{fx:.26,fy:.14}, cup:{fx:.74,fy:.88}, target:30, ink:1.1, timeLimit:23, volumeLimit:46, obstacles:[{fx:.34,fy:.30,fw:.18,fh:.04},{fx:.52,fy:.48,fw:.18,fh:.04},{fx:.62,fy:.66,fw:.12,fh:.04}]},
+    {pipe:{fx:.50,fy:.12}, cup:{fx:.26,fy:.88}, target:32, ink:1.1, timeLimit:22, volumeLimit:48, obstacles:[{fx:.38,fy:.28,fw:.12,fh:.04},{fx:.52,fy:.28,fw:.12,fh:.04},{fx:.44,fy:.46,fw:.12,fh:.16},{fx:.28,fy:.68,fw:.14,fh:.04}]},
+
+    // 36-40: tight ink + time
+    {pipe:{fx:.74,fy:.14}, cup:{fx:.26,fy:.88}, target:30, ink:1.05, timeLimit:22, volumeLimit:44, obstacles:[{fx:.56,fy:.26,fw:.14,fh:.04},{fx:.40,fy:.42,fw:.14,fh:.04},{fx:.28,fy:.58,fw:.14,fh:.04},{fx:.28,fy:.72,fw:.10,fh:.04}]},
+    {pipe:{fx:.26,fy:.14}, cup:{fx:.74,fy:.88}, target:32, ink:1.05, timeLimit:22, volumeLimit:48, obstacles:[{fx:.34,fy:.28,fw:.04,fh:.18},{fx:.50,fy:.42,fw:.04,fh:.18},{fx:.66,fy:.58,fw:.04,fh:.18}]},
+    {pipe:{fx:.50,fy:.12}, cup:{fx:.78,fy:.88}, target:32, ink:1.0, timeLimit:21, volumeLimit:46, obstacles:[{fx:.42,fy:.28,fw:.16,fh:.04},{fx:.56,fy:.44,fw:.16,fh:.04},{fx:.64,fy:.60,fw:.12,fh:.04},{fx:.70,fy:.74,fw:.10,fh:.04}]},
+    {pipe:{fx:.78,fy:.12}, cup:{fx:.22,fy:.88}, target:32, ink:1.0, timeLimit:21, volumeLimit:46, obstacles:[{fx:.60,fy:.26,fw:.12,fh:.04},{fx:.44,fy:.38,fw:.12,fh:.04},{fx:.30,fy:.52,fw:.12,fh:.04},{fx:.24,fy:.68,fw:.10,fh:.14}]},
+    {pipe:{fx:.50,fy:.12}, cup:{fx:.50,fy:.90}, target:34, ink:1.0, timeLimit:20, volumeLimit:48, obstacles:[{fx:.30,fy:.30,fw:.14,fh:.04},{fx:.56,fy:.30,fw:.14,fh:.04},{fx:.36,fy:.50,fw:.12,fh:.04},{fx:.52,fy:.50,fw:.12,fh:.04},{fx:.44,fy:.68,fw:.12,fh:.04}]},
+
+    // 41-45: very challenging
+    {pipe:{fx:.22,fy:.12}, cup:{fx:.78,fy:.90}, target:32, ink:0.95, timeLimit:20, volumeLimit:44, obstacles:[{fx:.30,fy:.26,fw:.04,fh:.20},{fx:.46,fy:.38,fw:.04,fh:.20},{fx:.60,fy:.52,fw:.04,fh:.20},{fx:.72,fy:.68,fw:.04,fh:.14}]},
+    {pipe:{fx:.78,fy:.12}, cup:{fx:.22,fy:.90}, target:32, ink:0.95, timeLimit:20, volumeLimit:44, obstacles:[{fx:.62,fy:.26,fw:.12,fh:.04},{fx:.46,fy:.40,fw:.12,fh:.04},{fx:.30,fy:.54,fw:.12,fh:.04},{fx:.24,fy:.68,fw:.08,fh:.14}]},
+    {pipe:{fx:.50,fy:.10}, cup:{fx:.20,fy:.90}, target:34, ink:0.95, timeLimit:19, volumeLimit:46, obstacles:[{fx:.40,fy:.26,fw:.12,fh:.04},{fx:.54,fy:.26,fw:.12,fh:.04},{fx:.46,fy:.42,fw:.08,fh:.16},{fx:.30,fy:.58,fw:.14,fh:.04},{fx:.22,fy:.72,fw:.10,fh:.04}]},
+    {pipe:{fx:.50,fy:.10}, cup:{fx:.80,fy:.90}, target:34, ink:0.9, timeLimit:19, volumeLimit:46, obstacles:[{fx:.38,fy:.26,fw:.12,fh:.04},{fx:.54,fy:.26,fw:.12,fh:.04},{fx:.50,fy:.42,fw:.08,fh:.16},{fx:.60,fy:.60,fw:.14,fh:.04},{fx:.70,fy:.74,fw:.10,fh:.04}]},
+    {pipe:{fx:.26,fy:.10}, cup:{fx:.74,fy:.90}, target:36, ink:0.9, timeLimit:18, volumeLimit:48, obstacles:[{fx:.32,fy:.24,fw:.14,fh:.04},{fx:.46,fy:.36,fw:.04,fh:.18},{fx:.56,fy:.52,fw:.14,fh:.04},{fx:.64,fy:.66,fw:.04,fh:.16}]},
+
+    // 46-50: extreme
+    {pipe:{fx:.74,fy:.10}, cup:{fx:.26,fy:.90}, target:34, ink:0.9, timeLimit:18, volumeLimit:44, obstacles:[{fx:.58,fy:.24,fw:.12,fh:.04},{fx:.44,fy:.36,fw:.12,fh:.04},{fx:.30,fy:.50,fw:.12,fh:.04},{fx:.24,fy:.64,fw:.08,fh:.14},{fx:.36,fy:.74,fw:.10,fh:.04}]},
+    {pipe:{fx:.50,fy:.10}, cup:{fx:.50,fy:.90}, target:36, ink:0.85, timeLimit:18, volumeLimit:46, obstacles:[{fx:.32,fy:.26,fw:.12,fh:.04},{fx:.56,fy:.26,fw:.12,fh:.04},{fx:.44,fy:.40,fw:.12,fh:.04},{fx:.36,fy:.56,fw:.12,fh:.04},{fx:.52,fy:.56,fw:.12,fh:.04},{fx:.44,fy:.72,fw:.12,fh:.04}]},
+    {pipe:{fx:.22,fy:.10}, cup:{fx:.78,fy:.90}, target:36, ink:0.85, timeLimit:17, volumeLimit:46, obstacles:[{fx:.30,fy:.24,fw:.04,fh:.16},{fx:.42,fy:.36,fw:.04,fh:.16},{fx:.54,fy:.48,fw:.04,fh:.16},{fx:.66,fy:.60,fw:.04,fh:.16},{fx:.72,fy:.76,fw:.04,fh:.10}]},
+    {pipe:{fx:.78,fy:.10}, cup:{fx:.22,fy:.90}, target:38, ink:0.85, timeLimit:17, volumeLimit:48, obstacles:[{fx:.62,fy:.22,fw:.12,fh:.04},{fx:.48,fy:.34,fw:.12,fh:.04},{fx:.34,fy:.48,fw:.12,fh:.04},{fx:.24,fy:.62,fw:.10,fh:.04},{fx:.28,fy:.74,fw:.08,fh:.10}]},
+    {pipe:{fx:.50,fy:.08}, cup:{fx:.50,fy:.92}, target:40, ink:0.8, timeLimit:16, volumeLimit:50, obstacles:[{fx:.30,fy:.22,fw:.14,fh:.04},{fx:.56,fy:.22,fw:.14,fh:.04},{fx:.42,fy:.36,fw:.06,fh:.14},{fx:.52,fy:.36,fw:.06,fh:.14},{fx:.34,fy:.54,fw:.14,fh:.04},{fx:.52,fy:.54,fw:.14,fh:.04},{fx:.44,fy:.70,fw:.12,fh:.04}]},
   ];
 
   // ---------- STATE ----------
@@ -150,18 +222,26 @@
   let drops = [];
   let inkUsed = 0, inkMax = 0;
   let filled = 0, target = 1;
-  let solved = false;
+  let solved = false, failed = false;
   let layout = null;
   let emitTimer = 0;
-  let cupAnim = 0;           // for happy bounce
+  let cupAnim = 0;
   let confetti = [];
   let lastT = performance.now();
+
+  // time/volume constraints
+  let timeLimit = 0;    // 0 = no limit
+  let volumeLimit = 0;  // 0 = no limit
+  let timeLeft = 0;
+  let totalEmitted = 0;
 
   // dom
   const el = id=>document.getElementById(id);
   const $pct=el('pct'),$mfill=el('mfill'),$goal=el('goal'),$lvlLabel=el('lvlLabel'),
         $levelUp=el('levelUp'),$inkFill=el('inkFill'),$inkLabel=el('inkLabel'),
-        $hint=el('hint'),$win=el('win'),$winTitle=el('winTitle'),$winSub=el('winSub');
+        $hint=el('hint'),$win=el('win'),$winTitle=el('winTitle'),$winSub=el('winSub'),
+        $constraints=el('constraints'),$timerDisp=el('timerDisp'),$volumeDisp=el('volumeDisp'),
+        $fail=el('fail'),$failTitle=el('failTitle'),$failSub=el('failSub');
 
   // ---------- SIZING ----------
   function resize(){
@@ -187,12 +267,17 @@
   // ---------- LEVEL LOAD ----------
   function loadLevel(i){
     lvl = Math.max(0, Math.min(LEVELS.length-1, i));
-    strokes=[]; segs=[]; drops=[]; inkUsed=0; filled=0; solved=false; emitTimer=0; confetti=[];
+    strokes=[]; segs=[]; drops=[]; inkUsed=0; filled=0; solved=false; failed=false; emitTimer=0; confetti=[]; totalEmitted=0;
     target = LEVELS[lvl].target;
+    timeLimit = LEVELS[lvl].timeLimit || 0;
+    volumeLimit = LEVELS[lvl].volumeLimit || 0;
+    timeLeft = timeLimit;
     computeLayout();
     updateHUD();
     $hint.style.display = (lvl===0)?'block':'none';
     $levelUp.classList.remove('ready');
+    $fail.style.display='none';
+    $constraints.style.display = timeLimit ? 'flex' : 'none';
   }
 
   function updateHUD(){
@@ -202,18 +287,25 @@
     $lvlLabel.textContent = 'LV '+(lvl+1)+' / '+LEVELS.length;
     $inkFill.style.width = Math.max(0,(1-inkUsed/inkMax))*100+'%';
     $goal.textContent = solved ? 'overflowing! tap LEVEL UP →' : (filled+' / '+target+' drops');
+    // constraints display
+    if(timeLimit){
+      const sec = Math.ceil(timeLeft);
+      $timerDisp.textContent = '⏱ '+sec+'s';
+      $timerDisp.className = sec<=5 ? 'warn' : '';
+      $volumeDisp.textContent = '💧 '+totalEmitted+'/'+volumeLimit;
+      $volumeDisp.className = (volumeLimit-totalEmitted)<=5 ? 'warn' : '';
+    }
   }
 
   // ---------- DRAWING INPUT ----------
   let drawing=false, cur=null, lastPt=null;
-  function inUI(y){ return y < H*0.12 || y > H*0.88; } // keep strokes out of HUD/toolbar zones loosely
   function ptFromEvt(e){
     const r=cv.getBoundingClientRect();
     const t=e.touches?e.touches[0]:e;
     return {x:t.clientX-r.left, y:t.clientY-r.top};
   }
   function startDraw(e){
-    if(solved) return;
+    if(solved||failed) return;
     const p=ptFromEvt(e);
     if(inkUsed>=inkMax) return;
     drawing=true; cur=[p]; lastPt=p; strokes.push(cur);
@@ -226,9 +318,7 @@
     const dx=p.x-lastPt.x, dy=p.y-lastPt.y;
     const d=Math.hypot(dx,dy);
     if(d<5) return;
-    if(inkUsed+d>inkMax){ // clip to remaining ink then stop
-      drawing=false; return;
-    }
+    if(inkUsed+d>inkMax){ drawing=false; return; }
     inkUsed+=d;
     cur.push(p);
     segs.push({x1:lastPt.x,y1:lastPt.y,x2:p.x,y2:p.y});
@@ -246,8 +336,10 @@
   const G=0.30, R=6, MAXDROPS=260;
   function emit(){
     if(drops.length>=MAXDROPS) return;
+    if(volumeLimit && totalEmitted>=volumeLimit) return;
     const p=layout.pipe;
     drops.push({x:p.x+(Math.random()-.5)*6, y:p.y+12, vx:(Math.random()-.5)*0.4, vy:1.2+Math.random()*0.5});
+    totalEmitted++;
   }
 
   function closestOnSeg(px,py,s){
@@ -263,15 +355,15 @@
     let nx=d.x-c.x, ny=d.y-c.y;
     let dist=Math.hypot(nx,ny);
     if(dist>=R) return;
-    if(dist<1e-4){ // exactly on line: use perpendicular
+    if(dist<1e-4){
       const dx=s.x2-s.x1, dy=s.y2-s.y1, l=Math.hypot(dx,dy)||1;
       nx=-dy/l; ny=dx/l; dist=0.01;
     }
     nx/=dist; ny/=dist;
     d.x=c.x+nx*R; d.y=c.y+ny*R;
     const vn=d.vx*nx+d.vy*ny;
-    if(vn<0){ d.vx-=nx*vn; d.vy-=ny*vn; }   // remove inward velocity -> slide
-    d.vx*=0.985; d.vy*=0.985;               // friction along slope
+    if(vn<0){ d.vx-=nx*vn; d.vy-=ny*vn; }
+    d.vx*=0.985; d.vy*=0.985;
   }
 
   function collideRect(d,r){
@@ -279,7 +371,7 @@
     const cy=Math.max(r.y, Math.min(d.y, r.y+r.h));
     let nx=d.x-cx, ny=d.y-cy, dist=Math.hypot(nx,ny);
     if(dist>=R) return;
-    if(dist<1e-4){ // inside: push out nearest edge
+    if(dist<1e-4){
       const dl=d.x-r.x, dr=r.x+r.w-d.x, dt=d.y-r.y, db=r.y+r.h-d.y;
       const min=Math.min(dl,dr,dt,db);
       if(min===dl){nx=-1;ny=0;} else if(min===dr){nx=1;ny=0;} else if(min===dt){nx=0;ny=-1;} else {nx=0;ny=1;}
@@ -291,19 +383,50 @@
     d.vx*=0.98; d.vy*=0.98;
   }
 
+  function checkFail(){
+    if(solved||failed) return;
+    // time ran out
+    if(timeLimit && timeLeft<=0){
+      failed=true;
+      $failTitle.textContent='out of time!';
+      $failSub.textContent='The cup needed '+(target-filled)+' more drops.';
+      $fail.style.display='flex';
+      return;
+    }
+    // volume exhausted and not enough drops in play to win
+    if(volumeLimit && totalEmitted>=volumeLimit){
+      // count drops still in play that could reach cup
+      const potentialDrops = drops.length;
+      if(filled + potentialDrops < target){
+        failed=true;
+        $failTitle.textContent='out of water!';
+        $failSub.textContent='Not enough drops left to fill the cup.';
+        $fail.style.display='flex';
+      }
+    }
+  }
+
   function step(dt){
+    if(failed) return;
+    // update timer
+    if(timeLimit && !solved){
+      timeLeft -= dt/1000;
+      if(timeLeft<0) timeLeft=0;
+      updateHUD();
+      checkFail();
+      if(failed) return;
+    }
     // emit
     if(!solved){
       emitTimer-=dt;
       if(emitTimer<=0){ emit(); emitTimer=120; }
     }
     const cup=layout.cup;
-    const rimY=cup.y-cup.h;          // top of cup
+    const rimY=cup.y-cup.h;
     const halfMouth=cup.mouth/2;
     for(let i=drops.length-1;i>=0;i--){
       const d=drops[i];
-      d.vy+=G; 
-      // integrate in small substeps for stable collisions
+      d.vy+=G;
       const steps=2;
       for(let s2=0;s2<steps;s2++){
         d.x+=d.vx/steps; d.y+=d.vy/steps;
@@ -319,8 +442,9 @@
       // off screen
       if(d.y>H+30 || d.x<-30 || d.x>W+30){ drops.splice(i,1); }
     }
+    // check volume fail after drops leave screen
+    if(!solved && !failed) checkFail();
     if(cupAnim>0) cupAnim-=dt;
-    // confetti
     for(let i=confetti.length-1;i>=0;i--){
       const c=confetti[i]; c.vy+=0.25; c.x+=c.vx; c.y+=c.vy; c.r+=c.vr; c.life-=dt;
       if(c.life<=0||c.y>H+20) confetti.splice(i,1);
@@ -342,19 +466,11 @@
   }
 
   // ---------- RENDER ----------
-  function sketchLine(x1,y1,x2,y2,w,col){
-    ctx.strokeStyle=col; ctx.lineWidth=w; ctx.lineCap='round'; ctx.lineJoin='round';
-    ctx.beginPath();
-    // slight double-stroke jitter for pencil feel
-    ctx.moveTo(x1,y1); ctx.lineTo(x2,y2); ctx.stroke();
-  }
-
   function drawPipe(){
     const p=layout.pipe, s=layout.m*0.05;
     ctx.save();
     ctx.strokeStyle='var(--graphite)';
     ctx.lineWidth=3; ctx.lineJoin='round'; ctx.lineCap='round';
-    // a little bent spout pointing down
     ctx.beginPath();
     ctx.moveTo(p.x-s*1.6, p.y-s*1.4);
     ctx.lineTo(p.x-s*0.5, p.y-s*1.4);
@@ -365,7 +481,6 @@
     ctx.quadraticCurveTo(p.x+s*0.95,p.y-s*1.4-s*0.7, p.x+s*0.95,p.y-s*0.4);
     ctx.lineTo(p.x+s*0.95,p.y+2);
     ctx.stroke();
-    // opening ellipse
     ctx.beginPath();
     ctx.ellipse(p.x+s*0.575,p.y+2,s*0.42,s*0.16,0,0,Math.PI*2);
     ctx.fillStyle='rgba(51,50,46,.12)'; ctx.fill(); ctx.stroke();
@@ -383,7 +498,6 @@
     if(solved){ bob=Math.sin(performance.now()/160)*4; }
     ctx.translate(0,bob);
 
-    // water inside (visual fill)
     const fillH = Math.min(1, ratio) * (cup.h*0.86);
     if(fillH>2){
       ctx.save(); ctx.beginPath();
@@ -396,7 +510,6 @@
       ctx.lineTo(brx+10,cup.y+10); ctx.lineTo(blx-10,cup.y+10); ctx.closePath(); ctx.fill();
       ctx.restore();
     }
-    // overflow drips when solved
     if(solved){
       ctx.fillStyle='rgba(90,151,207,.6)';
       for(let k=0;k<3;k++){
@@ -406,36 +519,34 @@
       }
     }
 
-    // cup body
     ctx.strokeStyle='var(--graphite)'; ctx.lineWidth=3.2; ctx.lineJoin='round'; ctx.lineCap='round';
     ctx.beginPath();
     ctx.moveTo(lx,topY); ctx.lineTo(blx,cup.y); ctx.lineTo(brx,cup.y); ctx.lineTo(rx,topY);
     ctx.stroke();
-    // rim ellipse
     ctx.beginPath(); ctx.ellipse(cup.x,topY,cup.mouth/2,cup.mouth*0.16,0,0,Math.PI*2); ctx.stroke();
 
-    // ---- face ----
+    // face
     const fcx=cup.x, fcy=cup.y-cup.h*0.42, eo=cup.w*0.18, eyY=fcy-cup.h*0.04;
     ctx.lineWidth=3; ctx.strokeStyle='var(--graphite)'; ctx.fillStyle='var(--graphite)';
     if(solved){
-      // happy ^_^
       ctx.beginPath(); ctx.arc(fcx-eo,eyY+3,7,Math.PI*1.05,Math.PI*1.95); ctx.stroke();
       ctx.beginPath(); ctx.arc(fcx+eo,eyY+3,7,Math.PI*1.05,Math.PI*1.95); ctx.stroke();
       ctx.beginPath(); ctx.arc(fcx,fcy+cup.h*0.10,cup.w*0.18,0.15*Math.PI,0.85*Math.PI); ctx.stroke();
-      // blush
       ctx.fillStyle='rgba(201,73,44,.35)';
       ctx.beginPath();ctx.ellipse(fcx-eo*1.5,fcy+6,7,4,0,0,7);ctx.fill();
       ctx.beginPath();ctx.ellipse(fcx+eo*1.5,fcy+6,7,4,0,0,7);ctx.fill();
+    } else if(failed){
+      // sad face
+      ctx.beginPath(); ctx.arc(fcx-eo,eyY,3.2,0,7); ctx.fill();
+      ctx.beginPath(); ctx.arc(fcx+eo,eyY,3.2,0,7); ctx.fill();
+      ctx.beginPath(); ctx.arc(fcx,fcy+cup.h*0.18,cup.w*0.14,Math.PI*1.15,Math.PI*1.85); ctx.stroke();
     } else if(ratio>=0.6){
-      // shocked  O O  with open mouth
       ctx.beginPath(); ctx.arc(fcx-eo,eyY,6.5,0,7); ctx.stroke();
       ctx.beginPath(); ctx.arc(fcx+eo,eyY,6.5,0,7); ctx.stroke();
       ctx.beginPath(); ctx.ellipse(fcx,fcy+cup.h*0.12,cup.w*0.10,cup.h*0.085,0,0,7); ctx.stroke();
-      // sweat drop
       ctx.fillStyle='rgba(90,151,207,.8)';
       ctx.beginPath(); ctx.ellipse(fcx+eo+10,eyY-8+Math.sin(performance.now()/200)*2,3,5,0,0,7); ctx.fill();
     } else {
-      // calm dots + small line mouth
       ctx.beginPath(); ctx.arc(fcx-eo,eyY,3.2,0,7); ctx.fill();
       ctx.beginPath(); ctx.arc(fcx+eo,eyY,3.2,0,7); ctx.fill();
       ctx.beginPath(); ctx.moveTo(fcx-cup.w*0.10,fcy+cup.h*0.12); ctx.lineTo(fcx+cup.w*0.10,fcy+cup.h*0.12); ctx.stroke();
@@ -449,7 +560,6 @@
     ctx.fillStyle='rgba(51,50,46,.07)';
     for(const r of layout.obstacles){
       ctx.beginPath(); ctx.rect(r.x,r.y,r.w,r.h); ctx.fill(); ctx.stroke();
-      // hatching
       ctx.save(); ctx.beginPath(); ctx.rect(r.x,r.y,r.w,r.h); ctx.clip();
       ctx.strokeStyle='rgba(51,50,46,.25)'; ctx.lineWidth=1.2;
       for(let x=r.x-r.h;x<r.x+r.w;x+=8){ ctx.beginPath(); ctx.moveTo(x,r.y); ctx.lineTo(x+r.h,r.y+r.h); ctx.stroke(); }
@@ -467,7 +577,6 @@
       ctx.beginPath(); ctx.moveTo(st[0].x,st[0].y);
       for(let i=1;i<st.length;i++) ctx.lineTo(st[i].x,st[i].y);
       ctx.stroke();
-      // graphite texture pass
       ctx.lineWidth=2; ctx.globalAlpha=0.25; ctx.stroke();
     }
     ctx.globalAlpha=1; ctx.restore();
@@ -482,7 +591,6 @@
       ctx.fillStyle='rgba(255,255,255,.55)';
       ctx.beginPath(); ctx.ellipse(d.x-1.5,d.y-2,1.4,2.2,0,0,Math.PI*2); ctx.fill();
     }
-    // splashes
     for(let i=splashes.length-1;i>=0;i--){
       const s=splashes[i]; s.x+=s.vx; s.y+=s.vy; s.vy+=0.2; s.life-=16;
       ctx.fillStyle='rgba(90,151,207,'+Math.max(0,s.life/300)+')';
@@ -519,18 +627,20 @@
   $levelUp.addEventListener('click',()=>{
     if(lvl>=LEVELS.length-1){
       if(solved){ showWin(); }
-      else { loadLevel(lvl); } // restart last if not solved
+      else { loadLevel(lvl); }
       return;
     }
     loadLevel(lvl+1);
     $levelUp.classList.add('pulse'); setTimeout(()=>$levelUp.classList.remove('pulse'),500);
   });
-  el('erase').addEventListener('click',()=>{ if(solved)return; strokes=[];segs=[];inkUsed=0;updateHUD(); });
+  el('erase').addEventListener('click',()=>{ if(solved||failed)return; strokes=[];segs=[];inkUsed=0;updateHUD(); });
   el('restart').addEventListener('click',()=>{ loadLevel(lvl); });
+  el('retry').addEventListener('click',()=>{ loadLevel(lvl); });
   el('playAgain').addEventListener('click',()=>{ $win.style.display='none'; loadLevel(0); });
 
   function showWin(){
     $win.style.display='flex';
+    $winTitle.textContent='🎉 All 50 levels!';
     $winTitle.classList.add('pulse');
   }
 

@@ -1,0 +1,540 @@
+<!-- Pencil & Pipe — a draw-to-guide-water puzzle -->
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>Pencil &amp; Pipe</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Caveat:wght@500;700&family=Patrick+Hand&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --paper:#f3ecdb;
+    --paper2:#efe6cf;
+    --graphite:#33322e;
+    --graphite-soft:#74726a;
+    --blue:#5a97cf;
+    --blue-deep:#3a78b4;
+    --red:#c9492c;
+    --green:#5a8f4e;
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
+  html,body{margin:0;height:100%;overflow:hidden;background:#ddd5c2;}
+  body{
+    font-family:'Patrick Hand',cursive;
+    color:var(--graphite);
+    user-select:none;-webkit-user-select:none;
+  }
+  #wrap{position:fixed;inset:0;}
+  /* paper texture */
+  #paper{
+    position:absolute;inset:0;
+    background:
+      radial-gradient(120% 120% at 30% 10%, rgba(255,255,255,.5), rgba(255,255,255,0) 60%),
+      repeating-linear-gradient(0deg, rgba(0,0,0,.012) 0 1px, transparent 1px 26px),
+      linear-gradient(135deg,var(--paper),var(--paper2));
+    box-shadow:inset 0 0 160px rgba(90,70,40,.18);
+  }
+  #paper:after{ /* grain */
+    content:"";position:absolute;inset:0;opacity:.05;mix-blend-mode:multiply;
+    background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='120' height='120'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2'/></filter><rect width='100%25' height='100%25' filter='url(%23n)'/></svg>");
+  }
+  canvas{position:absolute;inset:0;touch-action:none;cursor:crosshair;}
+
+  /* ---- top HUD ---- */
+  .hud{position:absolute;left:0;right:0;top:0;padding:14px 16px;display:flex;align-items:flex-start;justify-content:space-between;gap:10px;pointer-events:none;}
+  .meter-wrap{flex:1;max-width:420px;pointer-events:none;}
+  .meter-top{display:flex;justify-content:space-between;align-items:baseline;font-size:20px;color:var(--graphite-soft);}
+  .pct{font-family:'Caveat',cursive;font-weight:700;font-size:34px;color:var(--graphite);line-height:.9;}
+  .meter{position:relative;height:20px;margin-top:4px;border:2.5px solid var(--graphite);border-radius:12px;background:rgba(255,255,255,.35);overflow:hidden;}
+  .meter-fill{position:absolute;left:0;top:0;bottom:0;width:0%;background:repeating-linear-gradient(45deg,var(--blue) 0 8px,var(--blue-deep) 8px 16px);transition:width .18s ease;}
+  .lvl{font-family:'Caveat',cursive;font-weight:700;font-size:26px;color:var(--graphite);text-align:right;line-height:1;margin-bottom:6px;}
+
+  .btn{
+    pointer-events:auto;cursor:pointer;font-family:'Caveat',cursive;font-weight:700;
+    background:var(--paper);color:var(--graphite);
+    border:2.5px solid var(--graphite);border-radius:14px;
+    padding:8px 14px;font-size:24px;line-height:1;
+    box-shadow:3px 3px 0 rgba(51,50,46,.85);
+    transition:transform .08s ease, box-shadow .08s ease, background .2s;
+    transform:rotate(-1.5deg);
+  }
+  .btn:active{transform:translate(2px,2px) rotate(-1.5deg);box-shadow:1px 1px 0 rgba(51,50,46,.85);}
+  .btn small{font-family:'Patrick Hand';font-weight:400;font-size:15px;display:block;}
+  #levelUp.ready{background:#ffe7a0;animation:wiggle 1s ease-in-out infinite;border-color:var(--red);color:var(--red);}
+  @keyframes wiggle{0%,100%{transform:rotate(-2deg) scale(1)}50%{transform:rotate(2deg) scale(1.06)}}
+
+  /* ---- bottom toolbar ---- */
+  .tools{position:absolute;left:0;right:0;bottom:0;padding:12px 16px calc(12px + env(safe-area-inset-bottom));display:flex;align-items:flex-end;justify-content:space-between;gap:10px;pointer-events:none;}
+  .ink{flex:1;max-width:300px;pointer-events:none;}
+  .ink-label{font-size:18px;color:var(--graphite-soft);}
+  .ink-bar{height:14px;margin-top:3px;border:2.5px solid var(--graphite);border-radius:10px;overflow:hidden;background:rgba(255,255,255,.35);}
+  .ink-fill{height:100%;width:100%;background:var(--graphite);transition:width .12s linear;}
+  .tools .row{display:flex;gap:10px;pointer-events:none;}
+  .btn.sm{font-size:20px;padding:7px 12px;box-shadow:2px 2px 0 rgba(51,50,46,.85);}
+
+  .hint{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%) rotate(-2deg);text-align:center;color:var(--graphite-soft);font-size:24px;pointer-events:none;opacity:.9;max-width:80%;}
+  .hint b{color:var(--graphite);}
+
+  /* win overlay */
+  #win{position:absolute;inset:0;display:none;align-items:center;justify-content:center;flex-direction:column;gap:14px;background:rgba(243,236,219,.82);backdrop-filter:blur(2px);text-align:center;padding:24px;}
+  #win h1{font-family:'Caveat';font-weight:700;font-size:64px;margin:0;color:var(--graphite);transform:rotate(-2deg);}
+  #win p{font-size:24px;margin:0;color:var(--graphite-soft);}
+  .pulse{animation:pop .5s ease;}
+  @keyframes pop{0%{transform:scale(.7)}60%{transform:scale(1.08)}100%{transform:scale(1)}}
+</style>
+
+<div id="wrap">
+  <div id="paper"></div>
+  <canvas id="cv"></canvas>
+
+  <div class="hud">
+    <div class="meter-wrap">
+      <div class="meter-top"><span class="pct" id="pct">0%</span><span id="goal" style="font-size:18px">fill the cup</span></div>
+      <div class="meter"><div class="meter-fill" id="mfill"></div></div>
+    </div>
+    <div style="text-align:right">
+      <div class="lvl" id="lvlLabel">LV 1 / 15</div>
+      <button class="btn" id="levelUp">LEVEL&nbsp;UP ↑<small>next stage</small></button>
+    </div>
+  </div>
+
+  <div class="hint" id="hint">Draw a <b>pencil slide</b> from the pipe to the cup.<br>Guide every drop home. 💧</div>
+
+  <div class="tools">
+    <div class="ink">
+      <div class="ink-label" id="inkLabel">pencil ✐</div>
+      <div class="ink-bar"><div class="ink-fill" id="inkFill"></div></div>
+    </div>
+    <div class="row">
+      <button class="btn sm" id="erase">erase ✐</button>
+      <button class="btn sm" id="restart">restart ↺</button>
+    </div>
+  </div>
+
+  <div id="win">
+    <h1 id="winTitle">🎉 All 15 levels!</h1>
+    <p id="winSub">You guided every last drop home.</p>
+    <button class="btn" id="playAgain" style="font-size:30px">play again ↺</button>
+  </div>
+</div>
+
+<script>
+(function(){
+  const cv = document.getElementById('cv');
+  const ctx = cv.getContext('2d');
+  let W=0,H=0,DPR=1;
+
+  // ---------- LEVELS (positions as fractions of width/height) ----------
+  // pipe = drop source, cup = target. ink = max draw length factor of min(W,H).
+  const LEVELS = [
+    {pipe:{fx:.30,fy:.26}, cup:{fx:.62,fy:.80}, target:14, ink:1.4,  obstacles:[]},
+    {pipe:{fx:.24,fy:.24}, cup:{fx:.74,fy:.82}, target:16, ink:1.6,  obstacles:[]},
+    {pipe:{fx:.72,fy:.24}, cup:{fx:.26,fy:.80}, target:16, ink:1.7,  obstacles:[]},
+    {pipe:{fx:.50,fy:.22}, cup:{fx:.20,fy:.78}, target:18, ink:1.7,  obstacles:[{fx:.42,fy:.50,fw:.16,fh:.05}]},
+    {pipe:{fx:.22,fy:.22}, cup:{fx:.80,fy:.80}, target:18, ink:1.6,  obstacles:[{fx:.46,fy:.46,fw:.10,fh:.18}]},
+    {pipe:{fx:.30,fy:.20}, cup:{fx:.66,fy:.84}, target:20, ink:1.5,  obstacles:[{fx:.30,fy:.50,fw:.20,fh:.045},{fx:.56,fy:.64,fw:.20,fh:.045}]},
+    {pipe:{fx:.78,fy:.22}, cup:{fx:.22,fy:.82}, target:20, ink:1.6,  obstacles:[{fx:.40,fy:.40,fw:.30,fh:.045}]},
+    {pipe:{fx:.50,fy:.18}, cup:{fx:.50,fy:.84}, target:22, ink:1.5,  obstacles:[{fx:.44,fy:.42,fw:.12,fh:.30}]},
+    {pipe:{fx:.20,fy:.20}, cup:{fx:.80,fy:.78}, target:22, ink:1.4,  obstacles:[{fx:.30,fy:.44,fw:.16,fh:.045},{fx:.56,fy:.60,fw:.16,fh:.045}]},
+    {pipe:{fx:.74,fy:.20}, cup:{fx:.26,fy:.84}, target:22, ink:1.5,  obstacles:[{fx:.40,fy:.36,fw:.10,fh:.20},{fx:.52,fy:.58,fw:.10,fh:.20}]},
+    {pipe:{fx:.32,fy:.18}, cup:{fx:.70,fy:.86}, target:24, ink:1.4,  obstacles:[{fx:.34,fy:.42,fw:.22,fh:.04},{fx:.50,fy:.62,fw:.22,fh:.04}]},
+    {pipe:{fx:.18,fy:.20}, cup:{fx:.84,fy:.80}, target:24, ink:1.35, obstacles:[{fx:.40,fy:.30,fw:.10,fh:.34}]},
+    {pipe:{fx:.50,fy:.16}, cup:{fx:.18,fy:.84}, target:26, ink:1.4,  obstacles:[{fx:.36,fy:.40,fw:.30,fh:.04},{fx:.20,fy:.60,fw:.28,fh:.04}]},
+    {pipe:{fx:.80,fy:.18}, cup:{fx:.20,fy:.86}, target:26, ink:1.35, obstacles:[{fx:.46,fy:.30,fw:.09,fh:.24},{fx:.30,fy:.60,fw:.20,fh:.04}]},
+    {pipe:{fx:.50,fy:.15}, cup:{fx:.50,fy:.88}, target:30, ink:1.3,  obstacles:[{fx:.30,fy:.38,fw:.16,fh:.04},{fx:.54,fy:.38,fw:.16,fh:.04},{fx:.42,fy:.62,fw:.16,fh:.04}]},
+  ];
+
+  // ---------- STATE ----------
+  let lvl = 0;
+  let strokes = [];          // array of strokes, each = array of {x,y}
+  let segs = [];             // flattened collision segments {x1,y1,x2,y2}
+  let drops = [];
+  let inkUsed = 0, inkMax = 0;
+  let filled = 0, target = 1;
+  let solved = false;
+  let layout = null;
+  let emitTimer = 0;
+  let cupAnim = 0;           // for happy bounce
+  let confetti = [];
+  let lastT = performance.now();
+
+  // dom
+  const el = id=>document.getElementById(id);
+  const $pct=el('pct'),$mfill=el('mfill'),$goal=el('goal'),$lvlLabel=el('lvlLabel'),
+        $levelUp=el('levelUp'),$inkFill=el('inkFill'),$inkLabel=el('inkLabel'),
+        $hint=el('hint'),$win=el('win'),$winTitle=el('winTitle'),$winSub=el('winSub');
+
+  // ---------- SIZING ----------
+  function resize(){
+    DPR = Math.min(window.devicePixelRatio||1, 2);
+    W = window.innerWidth; H = window.innerHeight;
+    cv.width = W*DPR; cv.height = H*DPR; cv.style.width=W+'px'; cv.style.height=H+'px';
+    ctx.setTransform(DPR,0,0,DPR,0,0);
+    computeLayout();
+  }
+  function computeLayout(){
+    const L = LEVELS[lvl];
+    const m = Math.min(W,H);
+    const cupW = Math.max(64, m*0.13);
+    layout = {
+      pipe:{x:L.pipe.fx*W, y:L.pipe.fy*H},
+      cup:{x:L.cup.fx*W, y:L.cup.fy*H, w:cupW, h:cupW*1.15, mouth:cupW*0.92},
+      obstacles:L.obstacles.map(o=>({x:o.fx*W,y:o.fy*H,w:o.fw*W,h:o.fh*H})),
+      m
+    };
+    inkMax = m * L.ink;
+  }
+
+  // ---------- LEVEL LOAD ----------
+  function loadLevel(i){
+    lvl = Math.max(0, Math.min(LEVELS.length-1, i));
+    strokes=[]; segs=[]; drops=[]; inkUsed=0; filled=0; solved=false; emitTimer=0; confetti=[];
+    target = LEVELS[lvl].target;
+    computeLayout();
+    updateHUD();
+    $hint.style.display = (lvl===0)?'block':'none';
+    $levelUp.classList.remove('ready');
+  }
+
+  function updateHUD(){
+    const pct = Math.min(100, Math.round(filled/target*100));
+    $pct.textContent = pct+'%';
+    $mfill.style.width = pct+'%';
+    $lvlLabel.textContent = 'LV '+(lvl+1)+' / '+LEVELS.length;
+    $inkFill.style.width = Math.max(0,(1-inkUsed/inkMax))*100+'%';
+    $goal.textContent = solved ? 'overflowing! tap LEVEL UP →' : (filled+' / '+target+' drops');
+  }
+
+  // ---------- DRAWING INPUT ----------
+  let drawing=false, cur=null, lastPt=null;
+  function inUI(y){ return y < H*0.12 || y > H*0.88; } // keep strokes out of HUD/toolbar zones loosely
+  function ptFromEvt(e){
+    const r=cv.getBoundingClientRect();
+    const t=e.touches?e.touches[0]:e;
+    return {x:t.clientX-r.left, y:t.clientY-r.top};
+  }
+  function startDraw(e){
+    if(solved) return;
+    const p=ptFromEvt(e);
+    if(inkUsed>=inkMax) return;
+    drawing=true; cur=[p]; lastPt=p; strokes.push(cur);
+    $hint.style.display='none';
+  }
+  function moveDraw(e){
+    if(!drawing) return;
+    e.preventDefault();
+    const p=ptFromEvt(e);
+    const dx=p.x-lastPt.x, dy=p.y-lastPt.y;
+    const d=Math.hypot(dx,dy);
+    if(d<5) return;
+    if(inkUsed+d>inkMax){ // clip to remaining ink then stop
+      drawing=false; return;
+    }
+    inkUsed+=d;
+    cur.push(p);
+    segs.push({x1:lastPt.x,y1:lastPt.y,x2:p.x,y2:p.y});
+    lastPt=p;
+    updateHUD();
+  }
+  function endDraw(){ drawing=false; cur=null; }
+
+  cv.addEventListener('pointerdown',startDraw);
+  cv.addEventListener('pointermove',moveDraw);
+  window.addEventListener('pointerup',endDraw);
+  cv.addEventListener('touchmove',e=>{if(drawing)e.preventDefault();},{passive:false});
+
+  // ---------- PHYSICS ----------
+  const G=0.30, R=6, MAXDROPS=260;
+  function emit(){
+    if(drops.length>=MAXDROPS) return;
+    const p=layout.pipe;
+    drops.push({x:p.x+(Math.random()-.5)*6, y:p.y+12, vx:(Math.random()-.5)*0.4, vy:1.2+Math.random()*0.5});
+  }
+
+  function closestOnSeg(px,py,s){
+    const dx=s.x2-s.x1, dy=s.y2-s.y1;
+    const len2=dx*dx+dy*dy || 1e-6;
+    let t=((px-s.x1)*dx+(py-s.y1)*dy)/len2;
+    t=Math.max(0,Math.min(1,t));
+    return {x:s.x1+t*dx, y:s.y1+t*dy};
+  }
+
+  function collideSeg(d,s){
+    const c=closestOnSeg(d.x,d.y,s);
+    let nx=d.x-c.x, ny=d.y-c.y;
+    let dist=Math.hypot(nx,ny);
+    if(dist>=R) return;
+    if(dist<1e-4){ // exactly on line: use perpendicular
+      const dx=s.x2-s.x1, dy=s.y2-s.y1, l=Math.hypot(dx,dy)||1;
+      nx=-dy/l; ny=dx/l; dist=0.01;
+    }
+    nx/=dist; ny/=dist;
+    d.x=c.x+nx*R; d.y=c.y+ny*R;
+    const vn=d.vx*nx+d.vy*ny;
+    if(vn<0){ d.vx-=nx*vn; d.vy-=ny*vn; }   // remove inward velocity -> slide
+    d.vx*=0.985; d.vy*=0.985;               // friction along slope
+  }
+
+  function collideRect(d,r){
+    const cx=Math.max(r.x, Math.min(d.x, r.x+r.w));
+    const cy=Math.max(r.y, Math.min(d.y, r.y+r.h));
+    let nx=d.x-cx, ny=d.y-cy, dist=Math.hypot(nx,ny);
+    if(dist>=R) return;
+    if(dist<1e-4){ // inside: push out nearest edge
+      const dl=d.x-r.x, dr=r.x+r.w-d.x, dt=d.y-r.y, db=r.y+r.h-d.y;
+      const min=Math.min(dl,dr,dt,db);
+      if(min===dl){nx=-1;ny=0;} else if(min===dr){nx=1;ny=0;} else if(min===dt){nx=0;ny=-1;} else {nx=0;ny=1;}
+      dist=0.01;
+    } else { nx/=dist; ny/=dist; }
+    d.x=cx+nx*R; d.y=cy+ny*R;
+    const vn=d.vx*nx+d.vy*ny;
+    if(vn<0){ d.vx-=nx*vn; d.vy-=ny*vn; }
+    d.vx*=0.98; d.vy*=0.98;
+  }
+
+  function step(dt){
+    // emit
+    if(!solved){
+      emitTimer-=dt;
+      if(emitTimer<=0){ emit(); emitTimer=120; }
+    }
+    const cup=layout.cup;
+    const rimY=cup.y-cup.h;          // top of cup
+    const halfMouth=cup.mouth/2;
+    for(let i=drops.length-1;i>=0;i--){
+      const d=drops[i];
+      d.vy+=G; 
+      // integrate in small substeps for stable collisions
+      const steps=2;
+      for(let s2=0;s2<steps;s2++){
+        d.x+=d.vx/steps; d.y+=d.vy/steps;
+        for(const s of segs) collideSeg(d,s);
+        for(const r of layout.obstacles) collideRect(d,r);
+      }
+      // caught by cup?
+      if(d.x>cup.x-halfMouth && d.x<cup.x+halfMouth && d.y>rimY-4 && d.y<rimY+cup.h*0.5 && d.vy>-0.5){
+        drops.splice(i,1);
+        if(!solved){ filled++; splash(cup.x+(Math.random()-.5)*cup.mouth, rimY); updateHUD(); checkWin(); }
+        continue;
+      }
+      // off screen
+      if(d.y>H+30 || d.x<-30 || d.x>W+30){ drops.splice(i,1); }
+    }
+    if(cupAnim>0) cupAnim-=dt;
+    // confetti
+    for(let i=confetti.length-1;i>=0;i--){
+      const c=confetti[i]; c.vy+=0.25; c.x+=c.vx; c.y+=c.vy; c.r+=c.vr; c.life-=dt;
+      if(c.life<=0||c.y>H+20) confetti.splice(i,1);
+    }
+  }
+
+  let splashes=[];
+  function splash(x,y){ for(let i=0;i<4;i++) splashes.push({x,y,vx:(Math.random()-.5)*2,vy:-Math.random()*2-0.5,life:300}); }
+
+  function checkWin(){
+    if(filled>=target && !solved){
+      solved=true; cupAnim=600;
+      $levelUp.classList.add('ready');
+      updateHUD();
+      for(let i=0;i<70;i++){
+        confetti.push({x:layout.cup.x,y:layout.cup.y-layout.cup.h, vx:(Math.random()-.5)*7, vy:-Math.random()*8-2, r:Math.random()*Math.PI, vr:(Math.random()-.5)*.4, life:1400, col:['#5a97cf','#c9492c','#5a8f4e','#e8b13a'][i%4]});
+      }
+    }
+  }
+
+  // ---------- RENDER ----------
+  function sketchLine(x1,y1,x2,y2,w,col){
+    ctx.strokeStyle=col; ctx.lineWidth=w; ctx.lineCap='round'; ctx.lineJoin='round';
+    ctx.beginPath();
+    // slight double-stroke jitter for pencil feel
+    ctx.moveTo(x1,y1); ctx.lineTo(x2,y2); ctx.stroke();
+  }
+
+  function drawPipe(){
+    const p=layout.pipe, s=layout.m*0.05;
+    ctx.save();
+    ctx.strokeStyle='var(--graphite)';
+    ctx.lineWidth=3; ctx.lineJoin='round'; ctx.lineCap='round';
+    // a little bent spout pointing down
+    ctx.beginPath();
+    ctx.moveTo(p.x-s*1.6, p.y-s*1.4);
+    ctx.lineTo(p.x-s*0.5, p.y-s*1.4);
+    ctx.quadraticCurveTo(p.x+s*0.2,p.y-s*1.4, p.x+s*0.2,p.y-s*0.4);
+    ctx.lineTo(p.x+s*0.2,p.y+2);
+    ctx.moveTo(p.x-s*1.6, p.y-s*1.4-s*0.7);
+    ctx.lineTo(p.x-s*0.5, p.y-s*1.4-s*0.7);
+    ctx.quadraticCurveTo(p.x+s*0.95,p.y-s*1.4-s*0.7, p.x+s*0.95,p.y-s*0.4);
+    ctx.lineTo(p.x+s*0.95,p.y+2);
+    ctx.stroke();
+    // opening ellipse
+    ctx.beginPath();
+    ctx.ellipse(p.x+s*0.575,p.y+2,s*0.42,s*0.16,0,0,Math.PI*2);
+    ctx.fillStyle='rgba(51,50,46,.12)'; ctx.fill(); ctx.stroke();
+    ctx.restore();
+  }
+
+  function drawCup(){
+    const cup=layout.cup;
+    const topY=cup.y-cup.h, botW=cup.w*0.62;
+    const lx=cup.x-cup.mouth/2, rx=cup.x+cup.mouth/2;
+    const blx=cup.x-botW/2, brx=cup.x+botW/2;
+    const ratio=filled/target;
+    ctx.save();
+    let bob=0;
+    if(solved){ bob=Math.sin(performance.now()/160)*4; }
+    ctx.translate(0,bob);
+
+    // water inside (visual fill)
+    const fillH = Math.min(1, ratio) * (cup.h*0.86);
+    if(fillH>2){
+      ctx.save(); ctx.beginPath();
+      ctx.moveTo(lx,topY); ctx.lineTo(rx,topY); ctx.lineTo(brx,cup.y); ctx.lineTo(blx,cup.y); ctx.closePath();
+      ctx.clip();
+      ctx.fillStyle='rgba(90,151,207,.55)';
+      const wy=cup.y-fillH;
+      ctx.beginPath(); ctx.moveTo(blx-10,wy);
+      for(let x=blx-10;x<=brx+10;x+=12){ ctx.lineTo(x, wy+Math.sin((x+performance.now()/200)/22)*3); }
+      ctx.lineTo(brx+10,cup.y+10); ctx.lineTo(blx-10,cup.y+10); ctx.closePath(); ctx.fill();
+      ctx.restore();
+    }
+    // overflow drips when solved
+    if(solved){
+      ctx.fillStyle='rgba(90,151,207,.6)';
+      for(let k=0;k<3;k++){
+        const ox=cup.x+(k-1)*cup.mouth*0.32;
+        const oy=topY+ (performance.now()/6 + k*120)%40;
+        ctx.beginPath(); ctx.ellipse(ox,oy,4,6,0,0,Math.PI*2); ctx.fill();
+      }
+    }
+
+    // cup body
+    ctx.strokeStyle='var(--graphite)'; ctx.lineWidth=3.2; ctx.lineJoin='round'; ctx.lineCap='round';
+    ctx.beginPath();
+    ctx.moveTo(lx,topY); ctx.lineTo(blx,cup.y); ctx.lineTo(brx,cup.y); ctx.lineTo(rx,topY);
+    ctx.stroke();
+    // rim ellipse
+    ctx.beginPath(); ctx.ellipse(cup.x,topY,cup.mouth/2,cup.mouth*0.16,0,0,Math.PI*2); ctx.stroke();
+
+    // ---- face ----
+    const fcx=cup.x, fcy=cup.y-cup.h*0.42, eo=cup.w*0.18, eyY=fcy-cup.h*0.04;
+    ctx.lineWidth=3; ctx.strokeStyle='var(--graphite)'; ctx.fillStyle='var(--graphite)';
+    if(solved){
+      // happy ^_^
+      ctx.beginPath(); ctx.arc(fcx-eo,eyY+3,7,Math.PI*1.05,Math.PI*1.95); ctx.stroke();
+      ctx.beginPath(); ctx.arc(fcx+eo,eyY+3,7,Math.PI*1.05,Math.PI*1.95); ctx.stroke();
+      ctx.beginPath(); ctx.arc(fcx,fcy+cup.h*0.10,cup.w*0.18,0.15*Math.PI,0.85*Math.PI); ctx.stroke();
+      // blush
+      ctx.fillStyle='rgba(201,73,44,.35)';
+      ctx.beginPath();ctx.ellipse(fcx-eo*1.5,fcy+6,7,4,0,0,7);ctx.fill();
+      ctx.beginPath();ctx.ellipse(fcx+eo*1.5,fcy+6,7,4,0,0,7);ctx.fill();
+    } else if(ratio>=0.6){
+      // shocked  O O  with open mouth
+      ctx.beginPath(); ctx.arc(fcx-eo,eyY,6.5,0,7); ctx.stroke();
+      ctx.beginPath(); ctx.arc(fcx+eo,eyY,6.5,0,7); ctx.stroke();
+      ctx.beginPath(); ctx.ellipse(fcx,fcy+cup.h*0.12,cup.w*0.10,cup.h*0.085,0,0,7); ctx.stroke();
+      // sweat drop
+      ctx.fillStyle='rgba(90,151,207,.8)';
+      ctx.beginPath(); ctx.ellipse(fcx+eo+10,eyY-8+Math.sin(performance.now()/200)*2,3,5,0,0,7); ctx.fill();
+    } else {
+      // calm dots + small line mouth
+      ctx.beginPath(); ctx.arc(fcx-eo,eyY,3.2,0,7); ctx.fill();
+      ctx.beginPath(); ctx.arc(fcx+eo,eyY,3.2,0,7); ctx.fill();
+      ctx.beginPath(); ctx.moveTo(fcx-cup.w*0.10,fcy+cup.h*0.12); ctx.lineTo(fcx+cup.w*0.10,fcy+cup.h*0.12); ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  function drawObstacles(){
+    ctx.save();
+    ctx.strokeStyle='var(--graphite)'; ctx.lineWidth=3; ctx.lineJoin='round';
+    ctx.fillStyle='rgba(51,50,46,.07)';
+    for(const r of layout.obstacles){
+      ctx.beginPath(); ctx.rect(r.x,r.y,r.w,r.h); ctx.fill(); ctx.stroke();
+      // hatching
+      ctx.save(); ctx.beginPath(); ctx.rect(r.x,r.y,r.w,r.h); ctx.clip();
+      ctx.strokeStyle='rgba(51,50,46,.25)'; ctx.lineWidth=1.2;
+      for(let x=r.x-r.h;x<r.x+r.w;x+=8){ ctx.beginPath(); ctx.moveTo(x,r.y); ctx.lineTo(x+r.h,r.y+r.h); ctx.stroke(); }
+      ctx.restore();
+    }
+    ctx.restore();
+  }
+
+  function drawStrokes(){
+    ctx.save();
+    ctx.strokeStyle='var(--graphite)'; ctx.lineCap='round'; ctx.lineJoin='round';
+    for(const st of strokes){
+      if(st.length<2) continue;
+      ctx.lineWidth=4.5; ctx.globalAlpha=0.9;
+      ctx.beginPath(); ctx.moveTo(st[0].x,st[0].y);
+      for(let i=1;i<st.length;i++) ctx.lineTo(st[i].x,st[i].y);
+      ctx.stroke();
+      // graphite texture pass
+      ctx.lineWidth=2; ctx.globalAlpha=0.25; ctx.stroke();
+    }
+    ctx.globalAlpha=1; ctx.restore();
+  }
+
+  function drawDrops(){
+    ctx.save();
+    for(const d of drops){
+      ctx.beginPath();
+      ctx.fillStyle='rgba(90,151,207,.92)';
+      ctx.ellipse(d.x,d.y,R*0.8,R,0,0,Math.PI*2); ctx.fill();
+      ctx.fillStyle='rgba(255,255,255,.55)';
+      ctx.beginPath(); ctx.ellipse(d.x-1.5,d.y-2,1.4,2.2,0,0,Math.PI*2); ctx.fill();
+    }
+    // splashes
+    for(let i=splashes.length-1;i>=0;i--){
+      const s=splashes[i]; s.x+=s.vx; s.y+=s.vy; s.vy+=0.2; s.life-=16;
+      ctx.fillStyle='rgba(90,151,207,'+Math.max(0,s.life/300)+')';
+      ctx.beginPath(); ctx.arc(s.x,s.y,2,0,7); ctx.fill();
+      if(s.life<=0) splashes.splice(i,1);
+    }
+    ctx.restore();
+  }
+
+  function drawConfetti(){
+    for(const c of confetti){
+      ctx.save(); ctx.translate(c.x,c.y); ctx.rotate(c.r);
+      ctx.fillStyle=c.col; ctx.globalAlpha=Math.min(1,c.life/400);
+      ctx.fillRect(-4,-3,8,6); ctx.restore();
+    }
+  }
+
+  function render(){
+    ctx.clearRect(0,0,W,H);
+    drawObstacles();
+    drawStrokes();
+    drawPipe();
+    drawCup();
+    drawDrops();
+    drawConfetti();
+  }
+
+  function loop(now){
+    let dt=now-lastT; lastT=now; if(dt>50)dt=50;
+    step(dt); render(); requestAnimationFrame(loop);
+  }
+
+  // ---------- BUTTONS ----------
+  $levelUp.addEventListener('click',()=>{
+    if(lvl>=LEVELS.length-1){
+      if(solved){ showWin(); }
+      else { loadLevel(lvl); } // restart last if not solved
+      return;
+    }
+    loadLevel(lvl+1);
+    $levelUp.classList.add('pulse'); setTimeout(()=>$levelUp.classList.remove('pulse'),500);
+  });
+  el('erase').addEventListener('click',()=>{ if(solved)return; strokes=[];segs=[];inkUsed=0;updateHUD(); });
+  el('restart').addEventListener('click',()=>{ loadLevel(lvl); });
+  el('playAgain').addEventListener('click',()=>{ $win.style.display='none'; loadLevel(0); });
+
+  function showWin(){
+    $win.style.display='flex';
+    $winTitle.classList.add('pulse');
+  }
+
+  window.addEventListener('resize',resize);
+  resize(); loadLevel(0); requestAnimationFrame(loop);
+})();
+</script>
